@@ -7,8 +7,15 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <signal.h>
 
 #define PATH 200
+
+#define TIMEOUT 5
+
+int timeout_occurred = 0;
+
+void timeoutHandler(int sig);
 
 void readPath(int fd, char dir[PATH], char input[PATH], char expected[PATH]);
 
@@ -18,7 +25,7 @@ void closeFds(int fds[2]);
 
 void getUserPath(char dst[PATH], char path[PATH]);
 
-void runUser(char input[PATH], int fds[2], DIR *dir);
+int runUser(char input[PATH], int fds[2], DIR *dir);
 
 int compare(int fds[2], char expected[PATH], DIR *dir);
 
@@ -181,7 +188,20 @@ int main(int argc, char *argv[]) {
             continue;
         }
         //run users file
-        runUser(inputPath, fds, dir);
+        success = runUser(inputPath, fds, dir);
+        if (success == -1) {
+            if (write(fds[1], userDirent->d_name, strlen(userDirent->d_name)) == -1) {
+                closeFds(fds);
+                closedir(dir);
+                return -1;
+            }
+            if (write(fds[1], ",20,TIMEOUT\n", 12) == -1) {
+                closeFds(fds);
+                closedir(dir);
+                return -1;
+            }
+            continue;
+        }
         //compare the users output and expected output
         success = compare(fds, expectedPath, dir);
         if (write(fds[1], userDirent->d_name, strlen(userDirent->d_name)) == -1) {
@@ -276,7 +296,7 @@ int compare(int fds[2], char expected[PATH], DIR *dir) {
 }
 
 //run the user file
-void runUser(char input[PATH], int fds[2], DIR *dir) {
+int runUser(char input[PATH], int fds[2], DIR *dir) {
     int in, output;
     //open the input and output files
     if ((in = open(input, O_RDONLY)) == -1) {
@@ -305,7 +325,7 @@ void runUser(char input[PATH], int fds[2], DIR *dir) {
             exit(-1);
         exit(-1);
     }
-        //child process
+    //child process
     else if (pid == 0) {
         //change standard input
         if (dup2(in, 0) == -1) {
@@ -348,9 +368,15 @@ void runUser(char input[PATH], int fds[2], DIR *dir) {
             exit(-1);
         exit(-1);
     }
-        //parent process
+    //parent process
     else {
         int status;
+
+        // Set up signal handling for a timeout
+        signal(SIGALRM, timeoutHandler);
+        // Set alarm for TIMEOUT seconds
+        alarm(TIMEOUT);
+        
         if ((wait(&status)) == -1) {
             closeFds(fds);
             close(in);
@@ -360,14 +386,22 @@ void runUser(char input[PATH], int fds[2], DIR *dir) {
                 exit(-1);
             exit(-1);
         }
+        // Disarm the alarm
+        alarm(0);
         close(in);
         close(output);
+
+        if (timeout_occurred) {
+        timeout_occurred = 0; // Reset the flag for future use
+        return -1; // Return -1 to indicate a timeout occurred
+        }
+
         if (WEXITSTATUS(status) == -1)
             exit(-1);
-        return;
     }
 
 }
+
 
 //get the relative path to the path dir
 void getUserPath(char dst[PATH], char path[PATH]) {
@@ -491,4 +525,8 @@ int gccForUser(DIR *dir, char *path, int fds[2]) {
         }
         return WEXITSTATUS(status);
     }
+}
+
+void timeoutHandler(int signum) {
+    timeout_occurred = 1;
 }
