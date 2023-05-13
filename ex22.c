@@ -1,4 +1,4 @@
-
+// Gal Levy 208540872
 #include <stdio.h>
 #include <fcntl.h>
 #include <dirent.h>
@@ -10,122 +10,124 @@
 #include <signal.h>
 
 #define PATH 200
-
+void read_the_path(int fd, char dir[PATH], char input[PATH], char expected[PATH]);
+int compile_using_gcc(DIR *dir, char *path, int fds[2]);
 #define TIMEOUT 5
-
-int timeout_occurred = 0;
-
-void timeoutHandler(int sig);
-
-void readPath(int fd, char dir[PATH], char input[PATH], char expected[PATH]);
-
-int gccForUser(DIR *dir, char *path, int fds[2]);
-
-void closeFds(int fds[2]);
-
-void getUserPath(char dst[PATH], char path[PATH]);
-
-int runUser(char input[PATH], int fds[2], DIR *dir);
-
 int compare(int fds[2], char expected[PATH], DIR *dir);
+void timeout_handler(int signum);
+int timeout_occurred = 0;
+void close_folders(int fds[2]);
+int run_user_file(char input[PATH], int fds[2], DIR *dir);
+void get_the_path_of_user(char dst[PATH], char path[PATH]);
 
-void timeoutHandler(int signum);
 
 int main(int argc, char *argv[]) {
+
+    // In case there is lt args than expected
     //check num of args
     if (argc < 2) {
         if (write(1, "Not valid argv\n", 15) == -1)
             return -1;
         return -1;
     }
-    //read the configuration file
+
+
+    //read configuration - conf.txt
     int fd;
     if ((fd = open(argv[1], O_RDONLY)) == -1) {
         if (write(1, "Error in: open\n", 15) == -1)
             return -1;
         return -1;
     }
-    char dirPath[PATH], inputPath[PATH], expectedPath[PATH];
-    readPath(fd, dirPath, inputPath, expectedPath);
+
+    char directory_path[PATH], input_path[PATH], expected_path_for[PATH];
+
+    read_the_path(fd, directory_path, input_path, expected_path_for);
     close(fd);
-    //get the relative paths
-    char relativePath[PATH];
-    strcpy(relativePath, argv[1]);
-    getUserPath(relativePath, inputPath);
-    strcpy(inputPath, relativePath);
-    strcpy(relativePath, argv[1]);
-    getUserPath(relativePath, expectedPath);
-    strcpy(expectedPath, relativePath);
+
+    //relative path - generate and get
+    char relative_path[PATH];
+    strcpy(relative_path, argv[1]);
+
+    get_the_path_of_user(relative_path, input_path);
+    strcpy(input_path, relative_path);
+    strcpy(relative_path, argv[1]);
+
+    get_the_path_of_user(relative_path, expected_path_for);
+    strcpy(expected_path_for, relative_path);
     char usersDir[PATH];
     strcpy(usersDir, argv[1]);
-    getUserPath(usersDir, dirPath);
-    // check that the users dir exist
-    struct stat statUser;
-    if (stat(usersDir, &statUser) == -1) {
+
+    get_the_path_of_user(usersDir, directory_path);
+    // Search fro usr dir - if exist
+    struct stat stat_user_for;
+    if (stat(usersDir, &stat_user_for) == -1) {
         if (write(1, "Error in: stat\n", 15) == -1)
             return -1;
         return -1;
     }
-    if (!S_ISDIR(statUser.st_mode)) {
+
+
+    if (!S_ISDIR(stat_user_for.st_mode)) {
         if (write(1, "Not a valid directory\n", 22) == -1)
             return -1;
         return -1;
     }
-    //check that expected output and inout files exist
-    if (access(inputPath, F_OK) == -1) {
+    if (access(input_path, F_OK) == -1) {
         if (write(1, "Input file not exist\n", 21) == -1)
             return -1;
         return -1;
     }
-    if (access(expectedPath, F_OK) == -1) {
+    if (access(expected_path_for, F_OK) == -1) {
         if (write(1, "Output file not exist\n", 22) == -1)
             return -1;
         return -1;
     }
-    //open the users dir
-    //[0] is error fd,[1] is result fd
-    int fds[2];
-    if ((fds[0] = open("errors.txt", O_CREAT | O_WRONLY, 0644)) == -1) {
+    //open the dirs for the user
+    int fldrs[2];
+    if ((fldrs[0] = open("errors.txt", O_CREAT | O_WRONLY, 0644)) == -1) {
         if (write(1, "Error in: open\n", 15) == -1)
             return -1;
         return -1;
     }
-    if ((fds[1] = open("results.csv", O_CREAT | O_WRONLY, 0644)) == -1) {
-        close(fds[0]);
+    if ((fldrs[1] = open("results.csv", O_CREAT | O_WRONLY, 0644)) == -1) {
+        close(fldrs[0]);
         if (write(1, "Error in: open\n", 15) == -1)
             return -1;
         return -1;
     }
     DIR *dir;
-    struct dirent *userDirent;
+    struct dirent *dirnet_usr;
     if ((dir = opendir(usersDir)) == NULL) {
-        closeFds(fds);
+
+        close_folders(fldrs);
         if (write(1, "Error in: opendir\n", 18) == -1)
             return -1;
         return -1;
     }
-    //read the users dir
-    while ((userDirent = readdir(dir)) != NULL) {
-        //pass the current dir cnd parent dir
-        if (!strcmp(userDirent->d_name, ".") || !strcmp(userDirent->d_name, ".."))
+    while ((dirnet_usr = readdir(dir)) != NULL) {
+        if (!strcmp(dirnet_usr->d_name, ".") || !strcmp(dirnet_usr->d_name, ".."))
             continue;
-        //check that userDirent is dir
-        char innerDir[PATH];
-        strcpy(innerDir, usersDir);
-        strcat(innerDir, "/");
-        strcat(innerDir, userDirent->d_name);
-        if (stat(innerDir, &statUser) == -1) {
-            closeFds(fds);
+        //check if it is indeed a dir
+        char dir_inside[PATH];
+
+        strcpy(dir_inside, usersDir);
+        strcat(dir_inside, "/");
+
+        strcat(dir_inside, dirnet_usr->d_name);
+        if (stat(dir_inside, &stat_user_for) == -1) {
+            close_folders(fldrs);
             closedir(dir);
             if (write(1, "Error in: stat\n", 15) == -1)
                 return -1;
         }
-        if (!S_ISDIR(statUser.st_mode))
+        if (!S_ISDIR(stat_user_for.st_mode))
             continue;
         //open the users dir
         DIR *dir1;
-        if ((dir1 = opendir(innerDir)) == NULL) {
-            closeFds(fds);
+
+        if ((dir1 = opendir(dir_inside)) == NULL) {
+            close_folders(fldrs);
             closedir(dir);
             if (write(1, "Error in: opendir\n", 18) == -1)
                 return -1;
@@ -138,118 +140,131 @@ int main(int argc, char *argv[]) {
             if (!strcmp(".c", &dirent->d_name[strlen(dirent->d_name) - 2])) {
                 //check that not directory
                 char path[PATH];
-                strcpy(path, innerDir);
+                strcpy(path, dir_inside);
                 strcat(path, "/");
                 strcat(path, dirent->d_name);
-                if (stat(path, &statUser) == -1) {
-                    closeFds(fds);
+                if (stat(path, &stat_user_for) == -1) {
+                    close_folders(fldrs);
                     closedir(dir);
+
+
                     closedir(dir1);
                     if (write(1, "Error in: stat\n", 15) == -1)
                         return -1;
                 }
-                if (!S_ISDIR(statUser.st_mode))
+                if (!S_ISDIR(stat_user_for.st_mode))
                     break;
             }
         }
-        //not exist c file
+        //c not exist in the current direcoty at all
         if (!dirent) {
-            if (write(fds[1], userDirent->d_name, strlen(userDirent->d_name)) == -1) {
-                closeFds(fds);
+            if (write(fldrs[1], dirnet_usr->d_name, strlen(dirnet_usr->d_name)) == -1) {
+                close_folders(fldrs);
                 closedir(dir1);
                 closedir(dir);
                 return -1;
             }
-            if (write(fds[1], ",0,NO_C_FILE\n", 13) == -1) {
-                closeFds(fds);
+
+
+            if (write(fldrs[1], ",0,NO_C_FILE\n", 13) == -1) {
+                close_folders(fldrs);
                 closedir(dir1);
                 closedir(dir);
                 return -1;
             }
             continue;
         }
-        strcat(innerDir, "/");
-        strcat(innerDir, dirent->d_name);
+        strcat(dir_inside, "/");
+        strcat(dir_inside, dirent->d_name);
         closedir(dir1);
-        //gcc the c file
-        int success = gccForUser(dir, innerDir, fds);
-        //compilation error
-        if (success == 1) {
-            if (write(fds[1], userDirent->d_name, strlen(userDirent->d_name)) == -1) {
-                closeFds(fds);
+        //compile c file
+        int res_success = compile_using_gcc(dir, dir_inside, fldrs);
+        //a compilation error has been raised via gcc
+        if (res_success == 1) {
+            if (write(fldrs[1], dirnet_usr->d_name, strlen(dirnet_usr->d_name)) == -1) {
+                close_folders(fldrs);
                 closedir(dir);
                 return -1;
             }
-            if (write(fds[1], ",10,COMPILATION_ERROR\n", 22) == -1) {
-                closeFds(fds);
-                closedir(dir);
-                return -1;
-            }
-            continue;
-        }
-        //run users file
-        success = runUser(inputPath, fds, dir);
-        if (success == -1) {
-            if (write(fds[1], userDirent->d_name, strlen(userDirent->d_name)) == -1) {
-                closeFds(fds);
-                closedir(dir);
-                return -1;
-            }
-            if (write(fds[1], ",20,TIMEOUT\n", 12) == -1) {
-                closeFds(fds);
+
+            
+            if (write(fldrs[1], ",10,COMPILATION_ERROR\n", 22) == -1) {
+                close_folders(fldrs);
                 closedir(dir);
                 return -1;
             }
             continue;
         }
-        //compare the users output and expected output
-        success = compare(fds, expectedPath, dir);
-        if (write(fds[1], userDirent->d_name, strlen(userDirent->d_name)) == -1) {
-            closeFds(fds);
+        //run users file - get output of run_user_file in case of TIMEOUT
+        res_success = run_user_file(input_path, fldrs, dir);
+        if (res_success == -1) {
+            if (write(fldrs[1], dirnet_usr->d_name, strlen(dirnet_usr->d_name)) == -1) {
+                close_folders(fldrs);
+                closedir(dir);
+                return -1;
+            }
+
+            if (write(fldrs[1], ",20,TIMEOUT\n", 12) == -1) {
+                close_folders(fldrs);
+                closedir(dir);
+                return -1;
+            }
+            continue;
+        }
+        //compare the users output to origin main
+        res_success = compare(fldrs, expected_path_for, dir);
+        if (write(fldrs[1], dirnet_usr->d_name, strlen(dirnet_usr->d_name)) == -1) {
+            close_folders(fldrs);
             closedir(dir);
             return -1;
         }
-        printf("The number is: %d\n", success);
-        //print the result of compare to the file
-        switch (success) {
+
+        //switch case for output
+        switch (res_success) {
             case 1:
-                if (write(fds[1], ",100,EXCELLENT\n", 15) == -1) {
-                    closeFds(fds);
+
+
+                if (write(fldrs[1], ",100,EXCELLENT\n", 15) == -1) {
+                    close_folders(fldrs);
                     closedir(dir);
                     return -1;
                 }
                 break;
             case 2:
-                if (write(fds[1], ",50,WRONG\n", 10) == -1) {
-                    closeFds(fds);
+
+        
+                if (write(fldrs[1], ",50,WRONG\n", 10) == -1) {
+                    close_folders(fldrs);
                     closedir(dir);
                     return -1;
                 }
                 break;
             case 3:
-                if (write(fds[1], ",75,SIMILAR\n", 12) == -1) {
-                    closeFds(fds);
+
+
+                if (write(fldrs[1], ",75,SIMILAR\n", 12) == -1) {
+                    close_folders(fldrs);
                     closedir(dir);
                     return -1;
                 }
                 break;
             default:
-                closeFds(fds);
+
+                close_folders(fldrs);
                 closedir(dir);
         }
-        //remove the user output file
+        //remove usrr output file
+
         if (remove("output.txt") == -1) {
-            closeFds(fds);
+            close_folders(fldrs);
             closedir(dir);
             if ((write(2, "Error in: remove\n", 17)) == -1)
                 return -1;
             return -1;
         }
     }
-    //close fd
-    closeFds(fds);
+    close_folders(fldrs);
     closedir(dir);
-    //remove the user file
     if (remove("user.out") == -1) {
         if ((write(2, "Error in: remove\n", 17)) == -1)
             return -1;
@@ -258,34 +273,44 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-//compare user output with expected output
-int compare(int fds[2], char expected[PATH], DIR *dir) {
-    pid_t pid = fork();
-    //fork failed
-    if (pid == -1) {
-        closeFds(fds);
+// compile the c file using gcc
+int compile_using_gcc(DIR *dir, char *path, int fds[2]) {
+    pid_t pid;
+    if ((pid = fork()) == -1) {
         closedir(dir);
+        close_folders(fds);
+
         if (write(1, "Error in: fork\n", 15) == -1)
             exit(-1);
         exit(-1);
     }
-        //child process
-    else if (pid == 0) {
-        //call comp.out
-        char *argv[] = {"./comp.out", "output.txt", expected, NULL};
+    else if (!pid) {
+        //change standard error
+        if (dup2(fds[0], 2) == -1) {
+            close_folders(fds);
+            closedir(dir);
+
+            if (write(1, "Error in: dup2\n", 15) == -1)
+                exit(-1);
+            exit(-1);
+        }
+        //call gcc
+        // gcc call
+        char *argv[] = {"gcc", path, "-o", "user.out", NULL};
         execvp(argv[0], argv);
-        closeFds(fds);
+ 
+
+        close_folders(fds);
         closedir(dir);
         if (write(1, "Error in: execvp\n", 17) == -1)
             exit(-1);
         exit(-1);
     }
-        //parent process
     else {
         int status;
         //get child status
-        if ((wait(&status)) == -1) {
-            closeFds(fds);
+        if (wait(&status) == -1) {
+            close_folders(fds);
             closedir(dir);
             if (write(1, "Error in: wait\n", 15) == -1)
                 exit(-1);
@@ -295,64 +320,80 @@ int compare(int fds[2], char expected[PATH], DIR *dir) {
     }
 }
 
+
+
+void timeout_handler(int signum) {
+    timeout_occurred = 1;
+}
+
+
+
 //run the user file
-int runUser(char input[PATH], int fds[2], DIR *dir) {
+int run_user_file(char input[PATH], int fldrs[2], DIR *dir) {
+
+    //declare in output
     int in, output;
-    //open the input and output files
+    //open files for i/o
     if ((in = open(input, O_RDONLY)) == -1) {
-        closeFds(fds);
+        close_folders(fldrs);
         closedir(dir);
+        // if the condition met
         if (write(1, "Error in: open\n", 15) == -1)
             exit(-1);
         exit(-1);
     }
     if ((output = open("output.txt", O_CREAT | O_WRONLY, 0644)) == -1) {
-        closeFds(fds);
+        close_folders(fldrs);
         close(in);
         closedir(dir);
+        // if the condition met
         if (write(1, "Error in: open\n", 15) == -1)
             exit(-1);
         exit(-1);
     }
+    //procees pid
     pid_t pid;
     //fork failed
     if ((pid = fork()) == -1) {
-        closeFds(fds);
+        close_folders(fldrs);
         close(in);
         close(output);
         closedir(dir);
+
+        // if the condition met
         if (write(1, "Error in: fork\n", 15) == -1)
             exit(-1);
         exit(-1);
-    }
-    //child process
-    else if (pid == 0) {
-        //change standard input
+    } else if (pid == 0) {
+        //change for standartization
         if (dup2(in, 0) == -1) {
-            closeFds(fds);
+            close_folders(fldrs);
             close(in);
             close(output);
+
             closedir(dir);
             if (write(1, "Error in: dup2\n", 15) == -1)
                 exit(-1);
             exit(-1);
         }
-        //change standard output
+        //change for standartization
         if (dup2(output, 1) == -1) {
-            closeFds(fds);
+            close_folders(fldrs);
             close(in);
             close(output);
             closedir(dir);
+            // if the condition met
             if (write(1, "Error in: dup2\n", 15) == -1)
                 exit(-1);
             exit(-1);
         }
-        //change standard error
-        if (dup2(fds[0], 2) == -1) {
-            closeFds(fds);
+        //standartization
+        if (dup2(fldrs[0], 2) == -1) {
+            close_folders(fldrs);
             close(in);
             close(output);
             closedir(dir);
+            // if the condition met
             if (write(1, "Error in: dup2\n", 15) == -1)
                 exit(-1);
             exit(-1);
@@ -360,7 +401,7 @@ int runUser(char input[PATH], int fds[2], DIR *dir) {
         //call user file
         char *argv[] = {"./user.out", NULL};
         execvp(argv[0], argv);
-        closeFds(fds);
+        close_folders(fldrs);
         close(in);
         close(output);
         closedir(dir);
@@ -373,12 +414,12 @@ int runUser(char input[PATH], int fds[2], DIR *dir) {
         int status;
 
         // Set up signal handling for a timeout
-        signal(SIGALRM, timeoutHandler);
+        signal(SIGALRM, timeout_handler);
         // Set alarm for TIMEOUT seconds
         alarm(TIMEOUT);
         
         if ((wait(&status)) == -1) {
-            closeFds(fds);
+            close_folders(fldrs);
             close(in);
             close(output);
             closedir(dir);
@@ -403,122 +444,65 @@ int runUser(char input[PATH], int fds[2], DIR *dir) {
 }
 
 
-//get the relative path to the path dir
-void getUserPath(char dst[PATH], char path[PATH]) {
-    //get the dst dir path
-    int len = strlen(dst), lastPlace = len, i;
+void get_the_path_of_user(char dst[PATH], char path[PATH]) {
+    //get the path of the dir
+    int len = strlen(dst), last_place = len, i;
     for (i = 0; i < len; i++) {
+
         if (dst[i] == '/')
-            lastPlace = i;
+            last_place = i;
     }
-    dst[lastPlace] = '\0';
-    //add the relative path
+    // check correction end
+    dst[last_place] = '\0';
     strcat(dst, "/");
     strcat(dst, path);
 }
-
-//close the error and result files
-void closeFds(int fds[2]) {
+// close folders - done
+void close_folders(int fds[2]) {
     close(fds[0]);
+
     close(fds[1]);
 }
 
-//read the conf text
-void readPath(int fd, char *dir, char *input, char *expected) {
-    char *position = dir;
-    //read the first file
-    if (read(fd, position, 1) == -1) {
-        close(fd);
-        if (write(1, "Error in: read\n", 15) == -1)
-            exit(-1);
-        exit(-1);
-    }
-    while (*position != '\n') {
-        position++;
-        if (read(fd, position, 1) == -1) {
-            close(fd);
-            if (write(1, "Error in: read\n", 15) == -1)
-                exit(-1);
-            exit(-1);
-        }
-    }
-    *position = '\0';
-    position = input;
-    //read the second line
-    if (read(fd, position, 1) == -1) {
-        close(fd);
-        if (write(1, "Error in: read\n", 15) == -1)
-            exit(-1);
-        exit(-1);
-    }
-    while (*position != '\n') {
-        position++;
-        if (read(fd, position, 1) == -1) {
-            close(fd);
-            if (write(1, "Error in: read\n", 15) == -1)
-                exit(-1);
-            exit(-1);
-        }
-    }
-    *position = '\0';
-    position = expected;
-    //read the last file
-    if (read(fd, position, 1) == -1) {
-        close(fd);
-        if (write(1, "Error in: read\n", 15) == -1)
-            exit(-1);
-        exit(-1);
-    }
-    while (*position != '\n') {
-        position++;
-        if (read(fd, position, 1) == -1) {
-            close(fd);
-            if (write(1, "Error in: read\n", 15) == -1)
-                exit(-1);
-            exit(-1);
-        }
-    }
-    *position = '\0';
-}
+//rread the configuration file
 
-//get path to c file ant compile him with child process
-int gccForUser(DIR *dir, char *path, int fds[2]) {
-    pid_t pid;
-    //fork failed
-    if ((pid = fork()) == -1) {
+
+
+
+int compare(int fldrs[2], char expected[PATH], DIR *dir) {
+    pid_t pid = fork();
+    //fork fail
+    if (pid == -1) {
+        close_folders(fldrs);
         closedir(dir);
-        closeFds(fds);
+
         if (write(1, "Error in: fork\n", 15) == -1)
             exit(-1);
         exit(-1);
     }
+
         //child process
-    else if (!pid) {
-        //change standard error
-        if (dup2(fds[0], 2) == -1) {
-            closeFds(fds);
-            closedir(dir);
-            if (write(1, "Error in: dup2\n", 15) == -1)
-                exit(-1);
-            exit(-1);
-        }
-        //call gcc
-        char *argv[] = {"gcc", path, "-o", "user.out", NULL};
+    else if (pid == 0) {
+        // called file comparision
+        char *argv[] = {"./comp.out", "output.txt", expected, NULL};
         execvp(argv[0], argv);
-        //execvp failed
-        closeFds(fds);
+        close_folders(fldrs);
         closedir(dir);
+        // if the condition met
         if (write(1, "Error in: execvp\n", 17) == -1)
             exit(-1);
         exit(-1);
     }
+
         //parent process
     else {
         int status;
         //get child status
-        if (wait(&status) == -1) {
-            closeFds(fds);
+        if ((wait(&status)) == -1) {
+
+            close_folders(fldrs);
             closedir(dir);
+            // if the condition met
             if (write(1, "Error in: wait\n", 15) == -1)
                 exit(-1);
             exit(-1);
@@ -527,6 +511,62 @@ int gccForUser(DIR *dir, char *path, int fds[2]) {
     }
 }
 
-void timeoutHandler(int signum) {
-    timeout_occurred = 1;
+void read_the_path(int fldr, char *dir, char *input, char *expected) {
+    char *pos = dir;
+    //read 1st line
+    if (read(fldr, pos, 1) == -1) {
+        
+        close(fldr);
+        if (write(1, "Error in: read\n", 15) == -1)
+            exit(-1);
+        exit(-1);
+    }
+    // while there is no new line
+    while (*pos != '\n') {
+
+        pos++;
+        if (read(fldr, pos, 1) == -1) {
+            close(fldr);
+            if (write(1, "Error in: read\n", 15) == -1)
+                exit(-1);
+            exit(-1);
+        }
+    }
+    *pos = '\0';
+    pos = input;
+    //read 2nd line
+    if (read(fldr, pos, 1) == -1) {
+        close(fldr);
+        if (write(1, "Error in: read\n", 15) == -1)
+            exit(-1);
+        exit(-1);
+    }
+    while (*pos != '\n') {
+        pos++;
+        if (read(fldr, pos, 1) == -1) {
+            close(fldr);
+            if (write(1, "Error in: read\n", 15) == -1)
+                exit(-1);
+            exit(-1);
+        }
+    }
+    *pos = '\0';
+    pos = expected;
+    //read 3rd line
+    if (read(fldr, pos, 1) == -1) {
+        close(fldr);
+        if (write(1, "Error in: read\n", 15) == -1)
+            exit(-1);
+        exit(-1);
+    }
+    while (*pos != '\n') {
+        pos++;
+        if (read(fldr, pos, 1) == -1) {
+            close(fldr);
+            if (write(1, "Error in: read\n", 15) == -1)
+                exit(-1);
+            exit(-1);
+        }
+    }
+    *pos = '\0';
 }
